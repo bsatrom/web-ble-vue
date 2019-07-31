@@ -1,4 +1,4 @@
-# web-ble-vue
+# particle-js-vue
 
 ## Project setup
 ```

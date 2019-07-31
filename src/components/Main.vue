@@ -23,28 +23,50 @@
 
     <v-app-bar app color="indigo" dark>
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
-      <v-toolbar-title>Particle Web BLE Demo</v-toolbar-title>
+      <v-toolbar-title>Particle JS API Demo</v-toolbar-title>
     </v-app-bar>
 
     <v-content>
-      <v-snackbar v-model="bleError" color="error" multi-line top>
-        <v-layout align-center wrap>
-          <div>
-            This demo requires Web BLE, which is only available on new Chrome browsers on Android Chrome, Chromeboxes,
-            some Macs and Windows PCs. It's not supported on other browsers (Firefox, Safari, Edge, Internet Explorer)
-            and is not supported on Chrome for iOS.
-          </div>
-        </v-layout>
-        <v-btn color="black" @click="bleError = false">Close</v-btn>
+      <v-snackbar v-model="success" color="success" multi-line top>
+        <v-layout align-center wrap>{{successMsg}}</v-layout>
+        <v-btn color="black" @click="success = false">Close</v-btn>
       </v-snackbar>
-      <v-snackbar v-model="errorMsg" color="error" multi-line top>
+      <v-snackbar v-model="error" color="error" multi-line top>
         <v-layout align-center wrap>{{errorMsg}}</v-layout>
-        <v-btn color="black" @click="errorMsg = false">Close</v-btn>
+        <v-btn color="black" @click="error = false">Close</v-btn>
       </v-snackbar>
 
       <v-container fluid grid-list-md>
-        <v-layout align-center justify-center wrap>
+        <v-layout justify-center wrap>
           <v-flex text-center xs12>
+            <v-data-table
+              :headers="headers"
+              :items="streamItems"
+              :items-per-page="5"
+              class="elevation-1"
+              v-if="streamItems.length > 0"
+            ></v-data-table>
+          </v-flex>
+          <v-flex text-center xs6 md2>
+            <v-tooltip right>
+              <template v-slot:activator="{ on }">
+                <v-btn
+                  color="indigo"
+                  :href="source"
+                  class="text-center"
+                  dark
+                  x-large
+                  target="_blank"
+                  @click="toggleLED"
+                >
+                  <v-icon large>mdi-alarm-light</v-icon>Toggle LED
+                </v-btn>
+              </template>
+
+              <span>Click to toggle the device LED!</span>
+            </v-tooltip>
+          </v-flex>
+          <v-flex text-center xs6 md2>
             <v-tooltip left>
               <template v-slot:activator="{ on }">
                 <v-btn
@@ -54,60 +76,14 @@
                   dark
                   x-large
                   target="_blank"
-                  @click="scanForDevices"
+                  @click="startDeviceStream"
                 >
-                  <v-icon large>mdi-bluetooth-connect</v-icon>Scan
+                  <v-icon large>mdi-playlist-play</v-icon>Start Stream
                 </v-btn>
               </template>
 
-              <span>Click to start scanning for BLE Devices</span>
+              <span>Click to start the device stream!</span>
             </v-tooltip>
-          </v-flex>
-          <v-flex xs12>
-            <v-timeline v-if="progressItems.length > 0">
-              <v-slide-x-transition group>
-                <v-timeline-item
-                  v-for="(item, index) in progressItems"
-                  v-bind:key="index"
-                  color="indigo"
-                  :class="{'text-right' : index % 2 !== 0}"
-                >{{ item }}</v-timeline-item>
-              </v-slide-x-transition>
-            </v-timeline>
-          </v-flex>
-          <v-flex text-center v-if="deviceFound">
-            <v-spacer></v-spacer>
-            <v-card class="mx-auto" max-width="400" tile>
-              <v-list-item two-line>
-                <v-list-item-content>
-                  <v-icon>mdi-power-plug</v-icon>
-                  <v-list-item-title>Power Source:</v-list-item-title>
-                  <v-list-item-subtitle>
-                    <span>{{powerSource}}</span>
-                  </v-list-item-subtitle>
-                </v-list-item-content>
-              </v-list-item>
-
-              <v-list-item two-line>
-                <v-list-item-content>
-                  <v-icon>mdi-battery-alert</v-icon>
-                  <v-list-item-title>Battery State:</v-list-item-title>
-                  <v-list-item-subtitle>
-                    <span>{{ battState }}</span>
-                  </v-list-item-subtitle>
-                </v-list-item-content>
-              </v-list-item>
-
-              <v-list-item two-line>
-                <v-list-item-content>
-                  <v-icon>mdi-battery-charging-90</v-icon>
-                  <v-list-item-title>Battery Level: {{battLevel}}%</v-list-item-title>
-                  <v-list-item-subtitle>
-                    <v-progress-linear v-model="battLevel"></v-progress-linear>
-                  </v-list-item-subtitle>
-                </v-list-item-content>
-              </v-list-item>
-            </v-card>
           </v-flex>
         </v-layout>
       </v-container>
@@ -119,31 +95,72 @@
 </template>
 
 <script>
-import BLE from "../scripts/ble.js";
+import Particle from "particle-api-js";
+const particle = new Particle();
+const device = process.env.VUE_APP_DEVICE_ID;
+const token = process.env.VUE_APP_PARTICLE_TOKEN;
 
 export default {
   props: {
     source: String
   },
   methods: {
-    scanForDevices: function(event) {
-      if (navigator.bluetooth) {
-        BLE.initBLE(this);
-      } else {
-        this.bleError = true;
+    toggleLED: async function() {
+      try {
+        const toggle = await particle.callFunction({
+          deviceId: device,
+          name: "toggleLed",
+          auth: token
+        });
+
+        this.successMsg = "LED Toggled";
+        this.success = true;
+      } catch (err) {
+        this.errorMsg = "Function call error:" + err;
+        this.error = true;
       }
+    },
+    startDeviceStream: function() {
+      const that = this;
+
+      particle
+        .getEventStream({ deviceId: device, name: "env-vals", auth: token })
+        .then(function(stream) {
+          that.successMsg = "Stream Initialized";
+          that.success = true;
+
+          stream.on("event", function(data) {
+            console.log("New Event: ", data.data);
+            that.streamItems.push(JSON.parse(data.data));
+          });
+
+          stream.on("disconnect", function() {
+            that.errorMsg = "Disconnected from Particle event stream";
+            that.error = true;
+          });
+
+          stream.on("error", function(data) {
+            that.errorMsg = "Stream Error: " + error;
+            that.error = true;
+          });
+        });
     }
   },
 
   data: () => ({
+    headers: [
+      { text: "Temp", value: "temp" },
+      { text: "Humidity", value: "humidity" },
+      { text: "Light", value: "light" },
+      { text: "Location Lat", value: "location.lat" },
+      { text: "Location Long", value: "location.lon" }
+    ],
     drawer: false,
-    bleError: false,
-    deviceFound: false,
-    powerSource: null,
-    battLevel: 0,
-    battState: null,
-    progressItems: [],
-    errorMsg: false
+    streamItems: [],
+    error: false,
+    success: false,
+    errorMsg: null,
+    successMsg: null
   })
 };
 </script>
